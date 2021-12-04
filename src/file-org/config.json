@@ -1,6 +1,0 @@
-{
-    "simulation":true,
-    "loglevel":1,
-    "safemove":false,
-    "taskfile":"./tasks.json"
-}

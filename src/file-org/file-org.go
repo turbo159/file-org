@@ -4,10 +4,12 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -15,47 +17,133 @@ import (
 )
 
 func init() {
-	log.Info("In init")
+
+	log.Info("*********************************************")
+	log.Info("Starting file-org...")
+	log.Info()
 }
 
 func main() {
-	log.Info("In main")
+	var filecache = make(map[string]fileObj)
+	var taskFile string
+	var iTaskCount int
 
-	cf, e := loadConfigFile("./config.json")
+	flag.StringVar(&taskFile, "t", constTaskfile, "Specify task file path/name.")
+	flag.Parse()
+
+	tl, e := loadTaskFile(taskFile)
 	if e != nil {
-		log.Error("Errors", e)
+		log.Error("Error loading task file: ", taskFile)
 	}
 
-	tl, e := loadTaskFile(cf.Taskfile)
-	if e != nil {
-		log.Error("Errors")
+	if len(tl.Tasks) < 1 {
+		log.Info("Tasklist empty")
 	}
 
-	if len(tl.Tasks) > 0 {
-		// log.Info("Tasklist: ")
-		log.Printf("Tasklist: "+"%+v\n", tl)
-	} else {
-		log.Info("Tasklist totally empty")
-	}
-
-	var fileObjList []fileObj
-
-	for _, value := range tl.Tasks {
-		if value.IsEnabled {
-			x := getFileList(value.Sourcepath, value.Filetype, cf.SafeMove)
-
-			for _, obj := range x {
-				fileObjList = append(fileObjList, obj)
-			}
+	for _, t := range tl.Tasks {
+		if t.IsEnabled {
+			iTaskCount++
 		}
 	}
 
-	for i, file := range fileObjList {
-		fmt.Println(i, file.sha1hash, file.sourcename, file.sourcepath)
+	for i, value := range tl.Tasks {
+		if value.IsEnabled {
+			log.Info()
+			log.Info("Executing task/enabled tasks: ", i+1, "/", iTaskCount)
+			err := buidFileCache(filecache, value.SourcePath, value.FileType)
+			if err != nil {
+				log.Error("Build fileCache failed: ", err)
+			} else {
+				// Export scripts
+				var copyscript, dupscript string
+				log.Info("Preparing scripts...")
+				for _, file := range filecache {
+					if !file.duplicate {
+						copyscript += "cp " + file.sourcepath + "/" + file.sourcename + " " + value.DestinationPath + "/" + value.FilePrefix + file.sourcename + "\n"
+					} else {
+						dupscript += "cp " + file.sourcepath + "/" + file.sourcename + " " + value.DestinationPath + "/" + value.FilePrefix + file.sourcename + "\n"
+					}
+
+				}
+				//Create copy script
+				if copyscript != "" {
+					copyScriptName := fmt.Sprint(value.ScriptPath, "/", value.ScriptPrefix, "copy", i+1, ".sh")
+					if err := os.WriteFile(copyScriptName, []byte(copyscript), 0666); err != nil {
+						log.Error("Failed to create copy script. ", err)
+					} else {
+						log.Info("Created script: ", copyScriptName)
+					}
+				} else {
+					log.Info("No files to copy.")
+				}
+				//Create duplicate script
+				if dupscript != "" {
+					dupScriptName := fmt.Sprint(value.ScriptPath+"/"+value.ScriptPrefix+"duplicate", i+1, ".sh")
+					if err := os.WriteFile(dupScriptName, []byte(dupscript), 0666); err != nil {
+						log.Error("Failed to create duplicate script. ", err)
+					} else {
+						log.Info("Created script: ", dupScriptName)
+					}
+				} else {
+					log.Info("No duplicate files to copy.")
+				}
+			}
+			log.Info("Task complete.")
+		}
 	}
 
+	//Summary and stats
+	var filecount, duplicatecount int16
+	for _, file := range filecache {
+		if file.duplicate {
+			duplicatecount++
+		} else {
+			filecount++
+		}
+	}
+
+	log.Info()
+	log.Info("---------------------------------------------")
+	log.Info("Total cached files: ", len(filecache))
+	log.Info("New: ", filecount)
+	log.Info("Duplicates: ", duplicatecount)
+	log.Info()
+	log.Info("Finished file-org.")
+	log.Info("*********************************************")
 }
 
+func buidFileCache(cache map[string]fileObj, startpath string, filetype []string) error {
+	var throwAway int32 = 0
+	err := filepath.WalkDir(startpath,
+		func(pathstring string, info os.DirEntry, err error) error {
+
+			if !info.IsDir() && contains(filetype, filepath.Ext(info.Name())) {
+				//Generage hash string for the file
+				hash := getSha1Checksum(pathstring)
+
+				//Check if key already exists
+				item, exists := cache[hash]
+				if item.sourcepath == path.Dir(pathstring) {
+					throwAway++
+				} else {
+					cache[hash] = fileObj{
+						sha1hash:   hash,
+						duplicate:  exists,
+						sourcepath: path.Dir(pathstring),
+						sourcename: info.Name()}
+				}
+			}
+			return nil
+		})
+	if err != nil {
+		log.Error("Unexpected error building cache: ", err)
+		return err
+	}
+	log.Info("Items thrown away: ", throwAway)
+	return nil
+}
+
+// contains
 func contains(s []string, str string) bool {
 	for _, v := range s {
 		if strings.EqualFold(v, str) {
@@ -82,57 +170,15 @@ func getSha1Checksum(filePath string) (hashstring string) {
 	return returnSHA1String
 }
 
-// getFileList returns a list of files from the received path
-func getFileList(startpath string, filetype []string, checksum bool) (files []fileObj) {
-	err := filepath.Walk(startpath,
-		func(pathstring string, info os.FileInfo, err error) error {
-			// if err != nil {
-			// 	//return err
-			// }
-
-			if !info.IsDir() && contains(filetype, filepath.Ext(info.Name())) {
-				currentpath, _ := os.Getwd()
-				var hash string
-				if checksum {
-					hash = getSha1Checksum(pathstring)
-				} else {
-					hash = ""
-				}
-				files = append(files, fileObj{sourcepath: currentpath, sourcename: info.Name(), sha1hash: hash})
-			}
-
-			return nil
-		})
-	if err != nil {
-		log.Println(err)
-	}
-	return files
-}
-
 // loadTaskFile reads takes a taskfile path and loads the configuration into a TaskList struct.
 func loadTaskFile(taskFile string) (exeTasks Tasklist, e error) {
 	dat, _ := ioutil.ReadFile(taskFile)
 
 	err := json.Unmarshal(dat, &exeTasks)
 	if err != nil {
-		log.Error("JSON import error: ", err)
 		return exeTasks, err
 	}
 
-	log.Info("loadTaskFile complete")
+	log.Info("Task file loaded: ", taskFile)
 	return exeTasks, nil
-}
-
-// loadConfigFile reads a configuration file toc initialize the program.
-func loadConfigFile(configFile string) (c config, e error) {
-	dat, _ := ioutil.ReadFile(configFile)
-
-	err := json.Unmarshal(dat, &c)
-	if err != nil {
-		log.Error("Config file import error: ", err)
-		return c, err
-	}
-	log.Info("loadConfigFile complete: ", c)
-
-	return c, nil
 }

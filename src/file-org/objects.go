@@ -1,28 +1,25 @@
 package main
 
-type config struct {
-	Simulation bool   `json:"simulation"`
-	Loglevel   int    `json:"loglevel"`
-	SafeMove   bool   `json:"safemove"`
-	Taskfile   string `json:"taskfile"`
-}
+const constTaskfile string = "./tasks.json"
 
-type taskfile struct {
-	IsEnabled  bool     `json:"enabled"`
-	Sourcepath string   `json:"sourcepath"`
-	Recursive  bool     `json:"recursive"`
-	Filetype   []string `json:"filetype"`
-	Destpath   string   `json:"destpath"`
+type task struct {
+	IsEnabled       bool     `json:"enabled"`
+	Recursive       bool     `json:"recursive"`
+	FileType        []string `json:"filetype"`
+	FilePrefix      string   `json:"fileprefix"`
+	ScriptPrefix    string   `json:"scriptprefix"`
+	SourcePath      string   `json:"sourcepath"`
+	DestinationPath string   `json:"destinationpath"`
+	ScriptPath      string   `json:"scriptpath"`
 }
 
 type Tasklist struct {
-	Tasks []taskfile `json:"tasks"`
+	Tasks []task `json:"tasks"`
 }
 
 type fileObj struct {
+	sha1hash   string
+	duplicate  bool
 	sourcepath string
 	sourcename string
-	sha1hash   string
-	targetpath string
-	targetname string
 }
