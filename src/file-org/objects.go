@@ -1,6 +1,10 @@
 package main
 
-const constTaskfile string = "./tasks.json"
+const (
+	constTaskfile            string = "./tasks.json"
+	constCopyTaskSuffix      string = "CopyTask"
+	constDuplicateTaskSuffix string = "DuplicateTask"
+)
 
 type task struct {
 	IsEnabled       bool     `json:"enabled"`

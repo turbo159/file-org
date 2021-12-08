@@ -27,13 +27,21 @@ func main() {
 	var filecache = make(map[string]fileObj)
 	var taskFile string
 	var iTaskCount int
+	var flgHelp bool
 
 	flag.StringVar(&taskFile, "t", constTaskfile, "Specify task file path/name.")
+	flag.BoolVar(&flgHelp, "h", false, "Command help.")
 	flag.Parse()
+
+	if flgHelp {
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
 
 	tl, e := loadTaskFile(taskFile)
 	if e != nil {
 		log.Error("Error loading task file: ", taskFile)
+		os.Exit(0)
 	}
 
 	if len(tl.Tasks) < 1 {
@@ -45,11 +53,12 @@ func main() {
 			iTaskCount++
 		}
 	}
-
+	var runScriptCollection string
 	for i, value := range tl.Tasks {
 		if value.IsEnabled {
 			log.Info()
 			log.Info("Executing task/enabled tasks: ", i+1, "/", iTaskCount)
+			value.DestinationPath = cleanPath(value.DestinationPath)
 			err := buidFileCache(filecache, value.SourcePath, value.FileType)
 			if err != nil {
 				log.Error("Build fileCache failed: ", err)
@@ -67,10 +76,11 @@ func main() {
 				}
 				//Create copy script
 				if copyscript != "" {
-					copyScriptName := fmt.Sprint(value.ScriptPath, "/", value.ScriptPrefix, "copy", i+1, ".sh")
-					if err := os.WriteFile(copyScriptName, []byte(copyscript), 0666); err != nil {
+					copyScriptName := fmt.Sprint(value.ScriptPath, "/", value.ScriptPrefix, constCopyTaskSuffix, i+1, ".sh")
+					if err := os.WriteFile(copyScriptName, []byte(copyscript), 0777); err != nil {
 						log.Error("Failed to create copy script. ", err)
 					} else {
+						runScriptCollection += fmt.Sprint("./", copyScriptName, "\n")
 						log.Info("Created script: ", copyScriptName)
 					}
 				} else {
@@ -78,10 +88,11 @@ func main() {
 				}
 				//Create duplicate script
 				if dupscript != "" {
-					dupScriptName := fmt.Sprint(value.ScriptPath+"/"+value.ScriptPrefix+"duplicate", i+1, ".sh")
-					if err := os.WriteFile(dupScriptName, []byte(dupscript), 0666); err != nil {
+					dupScriptName := fmt.Sprint(value.ScriptPath, "/", value.ScriptPrefix, constDuplicateTaskSuffix, i+1, ".sh")
+					if err := os.WriteFile(dupScriptName, []byte(dupscript), 0777); err != nil {
 						log.Error("Failed to create duplicate script. ", err)
 					} else {
+						runScriptCollection += fmt.Sprint("./", dupScriptName, "\n")
 						log.Info("Created script: ", dupScriptName)
 					}
 				} else {
@@ -129,7 +140,7 @@ func buidFileCache(cache map[string]fileObj, startpath string, filetype []string
 					cache[hash] = fileObj{
 						sha1hash:   hash,
 						duplicate:  exists,
-						sourcepath: path.Dir(pathstring),
+						sourcepath: cleanPath(path.Dir(pathstring)),
 						sourcename: info.Name()}
 				}
 			}
@@ -141,6 +152,14 @@ func buidFileCache(cache map[string]fileObj, startpath string, filetype []string
 	}
 	log.Info("Items thrown away: ", throwAway)
 	return nil
+}
+
+//cleanPath cleans a path replacing spaces and invalid characters.
+func cleanPath(path string) (cleanPath string) {
+	path = strings.ReplaceAll(path, " ", "\\ ")
+	path = strings.ReplaceAll(path, "(", ".")
+	path = strings.ReplaceAll(path, ")", ".")
+	return path
 }
 
 // contains

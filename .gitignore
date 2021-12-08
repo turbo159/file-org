@@ -4,6 +4,8 @@
 *.dll
 *.so
 *.dylib
+src/file-org/scripts
+bin
 
 # Test binary, built with `go test -c`
 *.test
