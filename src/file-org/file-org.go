@@ -58,7 +58,7 @@ func main() {
 		if value.IsEnabled {
 			log.Info()
 			log.Info("Executing task/enabled tasks: ", i+1, "/", iTaskCount)
-			value.DestinationPath = cleanPath(value.DestinationPath)
+			value.DestinationPath = cleanPath(value.DestinationPath, true)
 			err := buidFileCache(filecache, value.SourcePath, value.FileType)
 			if err != nil {
 				log.Error("Build fileCache failed: ", err)
@@ -68,9 +68,10 @@ func main() {
 				log.Info("Preparing scripts...")
 				for _, file := range filecache {
 					if !file.duplicate {
-						copyscript += "cp " + file.sourcepath + "/" + file.sourcename + " " + value.DestinationPath + "/" + value.FilePrefix + file.sourcename + "\n"
+						//copyscript += "cp " + file.sourcepath + "/" + file.sourcename + " " + value.DestinationPath + "/" + value.FilePrefix + cleanPath(file.sourcename, false) + "\n"
+						copyscript += fmt.Sprint("cp ", "'", file.sourcepath, "/", file.sourcename, "' '", value.DestinationPath, "/", value.FilePrefix, cleanPath(file.sourcename, false), "'\n")
 					} else {
-						dupscript += "cp " + file.sourcepath + "/" + file.sourcename + " " + value.DestinationPath + "/" + value.FilePrefix + file.sourcename + "\n"
+						dupscript += "cp " + file.sourcepath + "/" + file.sourcename + " " + value.DestinationPath + "/" + value.FilePrefix + cleanPath(file.sourcename, false) + "\n"
 					}
 
 				}
@@ -140,7 +141,7 @@ func buidFileCache(cache map[string]fileObj, startpath string, filetype []string
 					cache[hash] = fileObj{
 						sha1hash:   hash,
 						duplicate:  exists,
-						sourcepath: cleanPath(path.Dir(pathstring)),
+						sourcepath: path.Dir(pathstring),
 						sourcename: info.Name()}
 				}
 			}
@@ -155,10 +156,15 @@ func buidFileCache(cache map[string]fileObj, startpath string, filetype []string
 }
 
 //cleanPath cleans a path replacing spaces and invalid characters.
-func cleanPath(path string) (cleanPath string) {
-	path = strings.ReplaceAll(path, " ", "\\ ")
-	path = strings.ReplaceAll(path, "(", ".")
-	path = strings.ReplaceAll(path, ")", ".")
+func cleanPath(path string, escSapce bool) (cleanPath string) {
+	if escSapce {
+		path = strings.ReplaceAll(path, " ", "\\ ")
+	} else {
+		path = strings.ReplaceAll(path, " ", "")
+	}
+
+	path = strings.ReplaceAll(path, "(", "_")
+	path = strings.ReplaceAll(path, ")", "_")
 	return path
 }
 
